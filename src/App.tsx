@@ -30,7 +30,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Play,
-  ExternalLink
+  ExternalLink,
+  Youtube,
+  Mail
 } from 'lucide-react';
 
 // Google Flow shared hero video asset
@@ -43,6 +45,7 @@ const FILM_INTERSTELLAR = '/src/assets/images/reel_tech_essay_1793980418712.jpg'
 const FILM_LAST_OF_US = '/src/assets/images/reel_timeline_preview_1793979722904.jpg';
 const FILM_TED_LASSO = '/src/assets/images/reel_vertical_preview_1793979722364.jpg';
 const FILM_DUNE = '/src/assets/images/project_fintech_dashboard_1793992647060.jpg';
+const FILM_TOKYO_DOC = '/src/assets/images/reel_street_interview_1793980418352.jpg';
 
 interface ServiceItem {
   number: string;
@@ -135,10 +138,20 @@ const ICEBERG_CAROUSEL = [
     title: 'Neon Horizon — Music Video & Tour Cut',
     rating: '9.7 ★',
     category: 'Cinematic Music Video',
-    aspect: '16/9',
+    aspect: '9/16',
     image: FILM_DUNE,
     year: '2024',
     tags: ['Stylized Grade', 'Multi-Cam Sync', 'Rhythm Edit']
+  },
+  {
+    id: 'creator-doc',
+    title: 'Tokyo Nocturne — Creator Short Doc',
+    rating: '9.9 ★',
+    category: 'Mini-Documentary',
+    aspect: '9/16',
+    image: FILM_TOKYO_DOC,
+    year: '2024',
+    tags: ['Street Audio', 'Night Color Pass', 'Kinetic Cut']
   }
 ];
 
@@ -157,21 +170,199 @@ export default function App() {
     }, 3500);
   };
 
-  const carouselRef = useRef<HTMLDivElement | null>(null);
+  const [activeCardIndex, setActiveCardIndex] = useState<number>(0);
+  const [isCarouselPaused, setIsCarouselPaused] = useState<boolean>(false);
+  const touchStartXRef = useRef<number | null>(null);
+  const touchDeltaXRef = useRef<number>(0);
+
+  const heroRef = useRef<HTMLElement | null>(null);
   const heroVideoRef = useRef<HTMLVideoElement | null>(null);
 
+  // Free-scrolling video scrubber with lerp easing
   useEffect(() => {
-    if (heroVideoRef.current) {
-      heroVideoRef.current.muted = true;
-      heroVideoRef.current.defaultMuted = true;
-      heroVideoRef.current.play().catch(() => {});
+    const video = heroVideoRef.current;
+    const hero = heroRef.current;
+    if (!video || !hero) return;
+
+    let targetTime = 0;
+    let currentTime = 0;
+    let duration = 0;
+    let isVideoReady = false;
+    let animationFrameId: number;
+
+    const updateDuration = () => {
+      if (video.duration && !isNaN(video.duration) && video.duration > 0) {
+        duration = video.duration;
+        isVideoReady = true;
+        handleScroll();
+      }
+    };
+
+    video.addEventListener('loadedmetadata', updateDuration);
+    if (video.duration && !isNaN(video.duration) && video.duration > 0) {
+      updateDuration();
     }
+
+    // Unlock video playback on mobile browsers upon first user touch or scroll
+    let unlocked = false;
+    const unlockVideo = () => {
+      if (!unlocked && video) {
+        video.play().then(() => {
+          video.pause();
+          unlocked = true;
+        }).catch(() => {});
+      }
+    };
+
+    window.addEventListener('touchstart', unlockVideo, { passive: true, once: true });
+    window.addEventListener('scroll', unlockVideo, { passive: true, once: true });
+
+    const handleScroll = () => {
+      const heroHeight = hero.offsetHeight || window.innerHeight;
+      const scrollThreshold = heroHeight * 0.8;
+      const progress = Math.min(Math.max(window.scrollY / (scrollThreshold > 0 ? scrollThreshold : 1), 0), 1);
+      if (duration > 0) {
+        targetTime = progress * duration;
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll, { passive: true });
+    handleScroll();
+
+    // Smooth lerp loop with requestAnimationFrame (lerp factor ~0.1)
+    const render = () => {
+      if (duration > 0 && isVideoReady) {
+        const diff = targetTime - currentTime;
+        if (Math.abs(diff) > 0.001) {
+          currentTime += diff * 0.1;
+          currentTime = Math.max(0, Math.min(duration, currentTime));
+          if (video.readyState >= 2) {
+            video.currentTime = currentTime;
+          }
+        }
+      }
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    animationFrameId = requestAnimationFrame(render);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+      window.removeEventListener('touchstart', unlockVideo);
+      window.removeEventListener('scroll', unlockVideo);
+      video.removeEventListener('loadedmetadata', updateDuration);
+    };
   }, []);
 
-  const scrollCarousel = (direction: 'left' | 'right') => {
-    if (carouselRef.current) {
-      const scrollAmount = direction === 'left' ? -340 : 340;
-      carouselRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+  const nextSlide = () => {
+    setActiveCardIndex((prev) => (prev + 1) % ICEBERG_CAROUSEL.length);
+  };
+
+  const prevSlide = () => {
+    setActiveCardIndex((prev) => (prev - 1 + ICEBERG_CAROUSEL.length) % ICEBERG_CAROUSEL.length);
+  };
+
+  // Optional auto-advance every 4 seconds, paused on touch or hover
+  useEffect(() => {
+    if (isCarouselPaused) return;
+    const interval = setInterval(() => {
+      setActiveCardIndex((prev) => (prev + 1) % ICEBERG_CAROUSEL.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isCarouselPaused]);
+
+  // Close modals on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsModalOpen(false);
+        setSelectedFilm(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setIsCarouselPaused(true);
+    touchStartXRef.current = e.touches[0].clientX;
+    touchDeltaXRef.current = 0;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartXRef.current !== null) {
+      touchDeltaXRef.current = e.touches[0].clientX - touchStartXRef.current;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (touchDeltaXRef.current < -35) {
+      nextSlide();
+    } else if (touchDeltaXRef.current > 35) {
+      prevSlide();
+    }
+    touchStartXRef.current = null;
+    touchDeltaXRef.current = 0;
+    setTimeout(() => setIsCarouselPaused(false), 2000);
+  };
+
+  const getCardOffset = (index: number) => {
+    const total = ICEBERG_CAROUSEL.length;
+    let diff = (index - activeCardIndex) % total;
+    if (diff > total / 2) diff -= total;
+    if (diff <= -total / 2) diff += total;
+    return diff;
+  };
+
+  const getCardStyle = (diff: number) => {
+    switch (diff) {
+      case 0:
+        return {
+          transform: 'translate(-50%, -50%) scale(1)',
+          zIndex: 30,
+          opacity: 1,
+          pointerEvents: 'auto' as const
+        };
+      case 1:
+        return {
+          transform: 'translate(calc(-50% + var(--neighbor-offset, 130px)), -50%) scale(0.8)',
+          zIndex: 20,
+          opacity: 0.85,
+          pointerEvents: 'auto' as const
+        };
+      case -1:
+        return {
+          transform: 'translate(calc(-50% - var(--neighbor-offset, 130px)), -50%) scale(0.8)',
+          zIndex: 20,
+          opacity: 0.85,
+          pointerEvents: 'auto' as const
+        };
+      case 2:
+        return {
+          transform: 'translate(calc(-50% + var(--outer-offset, 230px)), -50%) scale(0.7)',
+          zIndex: 10,
+          opacity: 0.5,
+          pointerEvents: 'auto' as const
+        };
+      case -2:
+        return {
+          transform: 'translate(calc(-50% - var(--outer-offset, 230px)), -50%) scale(0.7)',
+          zIndex: 10,
+          opacity: 0.5,
+          pointerEvents: 'auto' as const
+        };
+      default:
+        return {
+          transform: diff > 0
+            ? 'translate(calc(-50% + var(--waiting-offset, 340px)), -50%) scale(0.5)'
+            : 'translate(calc(-50% - var(--waiting-offset, 340px)), -50%) scale(0.5)',
+          zIndex: 0,
+          opacity: 0,
+          pointerEvents: 'none' as const
+        };
     }
   };
 
@@ -182,8 +373,17 @@ export default function App() {
       <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-[94%] max-w-4xl pointer-events-none">
         <header className="pointer-events-auto bg-[#141416]/95 backdrop-blur-xl border border-white/10 rounded-full px-5 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.5)] flex items-center justify-between transition-all">
           
-          {/* Logo Badge */}
-          <a href="#hero" className="flex items-center gap-2 group cursor-pointer">
+          {/* Mobile: Hamburger Menu on Left */}
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden text-zinc-300 hover:text-white p-1 cursor-pointer"
+            aria-label="Toggle navigation menu"
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+
+          {/* Desktop: Logo Badge (Hidden on mobile) */}
+          <a href="#hero" className="hidden md:flex items-center gap-2 group cursor-pointer">
             <div className="w-7 h-7 rounded-full bg-[#FF2A85] flex items-center justify-center text-white font-bold shadow-sm shadow-[#FF2A85]/30 group-hover:scale-105 transition-transform">
               <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
@@ -220,7 +420,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => showToast('Black, Pink & White palette synced.')}
-              className="p-1.5 text-zinc-400 hover:text-white rounded-full transition-colors hidden sm:block"
+              className="p-1.5 text-zinc-400 hover:text-white rounded-full transition-colors hidden md:block cursor-pointer"
               title="Toggle Theme"
             >
               <Moon className="w-4 h-4" />
@@ -234,14 +434,6 @@ export default function App() {
               className="bg-[#FF2A85] hover:bg-[#E02070] text-white font-mono text-xs font-bold px-4 sm:px-5 py-2 rounded-full transition-all cursor-pointer shadow-md shadow-[#FF2A85]/25 active:scale-95"
             >
               Let's Talk
-            </button>
-
-            {/* Mobile menu trigger */}
-            <button
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="md:hidden text-zinc-300 hover:text-white p-1"
-            >
-              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </header>
@@ -259,26 +451,26 @@ export default function App() {
       )}
 
       {/* 2. HERO SECTION */}
-      <section id="hero" className="relative w-full overflow-hidden pt-32 sm:pt-40 pb-20 md:pb-28">
-        
-        {/* Full-Width Hero Background Video Layer */}
-        <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none -z-10">
+      <section
+        id="hero"
+        ref={heroRef}
+        className="relative w-full overflow-hidden bg-black flex flex-col justify-center pt-20 sm:pt-28 pb-10 sm:pb-14 min-h-screen"
+      >
+          
+          {/* Full-Width Background Video (Scroll-Controlled) */}
           <video
             ref={heroVideoRef}
-            autoPlay
             muted
-            loop
             playsInline
             preload="auto"
-            className="w-full h-full object-cover object-center scale-105"
-            src="/assets/aistudio/Create_smooth_seamless_transition_1f8d059e_f9661600.mp4"
+            className="absolute inset-0 w-full h-full object-contain md:object-cover object-center z-0 pointer-events-none"
+            src="https://res.cloudinary.com/djkiddls/video/upload/f_mp4,vc_h264,q_auto/Create_smooth_seamless_transition_1f8d059e.mp4"
           />
-          {/* Subtle dark gradient overlay & vignette for optimal contrast */}
-          <div className="absolute inset-0 bg-black/60 bg-gradient-to-b from-[#0A0A0A]/90 via-black/45 to-[#0A0A0A]" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_25%,_rgba(10,10,10,0.8)_100%)]" />
-        </div>
 
-        <div className="relative max-w-7xl mx-auto px-6 z-10">
+          {/* 40% Black Overlay between video and text */}
+          <div className="absolute inset-0 bg-black/40 z-[1] pointer-events-none" />
+
+          <div className="relative max-w-7xl mx-auto px-6 z-10 w-full">
           {/* Top Award Badge */}
           <div className="flex justify-center mb-6">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#141416]/90 backdrop-blur-md border border-[#26262B] font-sans text-xs text-zinc-300 shadow-sm">
@@ -335,88 +527,146 @@ export default function App() {
 
           {/* Central Stage Area with Floating Badges and Centered Character Focus */}
           <div className="relative max-w-3xl mx-auto min-h-[380px] sm:min-h-[460px] md:min-h-[500px] flex justify-center items-center pt-4">
-            
-            {/* Ambient center aura around the focused character */}
-            <div className="absolute w-[320px] sm:w-[440px] h-[320px] sm:h-[440px] rounded-full bg-[#FF2A85]/5 blur-3xl -z-10 pointer-events-none" />
-
             {/* --- FLOATING LEFT ELEMENTS --- */}
             
             {/* Follow Me On (Top Left) */}
-            <div className="absolute top-8 left-2 sm:-left-8 md:-left-16 z-20 space-y-2 text-left">
+            <div className="absolute top-2 sm:top-1 left-2 sm:-left-6 md:-left-16 z-20 space-y-2 text-left">
               <span className="font-sans text-xs text-zinc-300 font-medium block drop-shadow-sm">
                 Follow Me On
               </span>
               <div className="flex items-center gap-1.5">
-                <a href="#" className="w-7 h-7 rounded-full bg-[#141416]/90 backdrop-blur-md border border-[#26262B] text-white flex items-center justify-center hover:bg-[#FF2A85] hover:border-[#FF2A85] transition-colors shadow-sm">
-                  <Facebook className="w-3.5 h-3.5" />
+                <a
+                  href="https://x.com/TheKarenEddy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-7 h-7 rounded-full bg-[#141416]/90 backdrop-blur-md border border-[#26262B] text-white flex items-center justify-center hover:bg-[#FF2A85] hover:border-[#FF2A85] transition-colors shadow-sm cursor-pointer"
+                  aria-label="X Profile"
+                  title="X (@TheKarenEddy)"
+                >
+                  <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
                 </a>
-                <a href="#" className="w-7 h-7 rounded-full bg-[#141416]/90 backdrop-blur-md border border-[#26262B] text-white flex items-center justify-center hover:bg-[#FF2A85] hover:border-[#FF2A85] transition-colors shadow-sm">
-                  <Twitter className="w-3.5 h-3.5" />
+                <a
+                  href="https://www.youtube.com/@kareneddy2"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-7 h-7 rounded-full bg-[#141416]/90 backdrop-blur-md border border-[#26262B] text-white flex items-center justify-center hover:bg-[#FF2A85] hover:border-[#FF2A85] transition-colors shadow-sm cursor-pointer"
+                  aria-label="YouTube Channel"
+                  title="YouTube (@kareneddy2)"
+                >
+                  <Youtube className="w-3.5 h-3.5" />
                 </a>
-                <a href="#" className="w-7 h-7 rounded-full bg-[#141416]/90 backdrop-blur-md border border-[#26262B] text-white flex items-center justify-center hover:bg-[#FF2A85] hover:border-[#FF2A85] transition-colors shadow-sm">
-                  <Instagram className="w-3.5 h-3.5" />
-                </a>
-                <a href="#" className="w-7 h-7 rounded-full bg-[#141416]/90 backdrop-blur-md border border-[#26262B] text-white flex items-center justify-center hover:bg-[#FF2A85] hover:border-[#FF2A85] transition-colors shadow-sm">
+                <a
+                  href="https://linkedin.com/in/karen-eddy-940258286"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-7 h-7 rounded-full bg-[#141416]/90 backdrop-blur-md border border-[#26262B] text-white flex items-center justify-center hover:bg-[#FF2A85] hover:border-[#FF2A85] transition-colors shadow-sm cursor-pointer"
+                  aria-label="LinkedIn Profile"
+                  title="LinkedIn"
+                >
                   <Linkedin className="w-3.5 h-3.5" />
                 </a>
+                <a
+                  href="https://t.me/Kareneddy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-7 h-7 rounded-full bg-[#141416]/90 backdrop-blur-md border border-[#26262B] text-white flex items-center justify-center hover:bg-[#FF2A85] hover:border-[#FF2A85] transition-colors shadow-sm cursor-pointer"
+                  aria-label="Telegram"
+                  title="Telegram (@Kareneddy)"
+                >
+                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.458c.538-.196 1.006.128.832.939z"/>
+                  </svg>
+                </a>
+                <a
+                  href="mailto:winneredet2@gmail.com"
+                  className="w-7 h-7 rounded-full bg-[#141416]/90 backdrop-blur-md border border-[#26262B] text-white flex items-center justify-center hover:bg-[#FF2A85] hover:border-[#FF2A85] transition-colors shadow-sm cursor-pointer"
+                  aria-label="Email Karen Eddy"
+                  title="Email winneredet2@gmail.com"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                </a>
               </div>
             </div>
 
-            {/* 350+ Reviews (4.9 of 5) (Bottom Left) */}
-            <div className="absolute bottom-16 left-0 sm:-left-10 md:-left-20 z-20 text-left bg-[#141416]/95 backdrop-blur-md p-3.5 rounded-2xl shadow-xl border border-[#26262B] max-w-[210px]">
-              {/* Overlapping Avatars */}
-              <div className="flex -space-x-2 overflow-hidden mb-1.5">
-                <img className="inline-block h-6 w-6 rounded-full ring-2 ring-[#141416] object-cover" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80" alt="Reviewer" />
-                <img className="inline-block h-6 w-6 rounded-full ring-2 ring-[#141416] object-cover" src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80" alt="Reviewer" />
-                <img className="inline-block h-6 w-6 rounded-full ring-2 ring-[#141416] object-cover" src="https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=120&q=80" alt="Reviewer" />
-                <img className="inline-block h-6 w-6 rounded-full ring-2 ring-[#141416] object-cover" src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=120&q=80" alt="Reviewer" />
-              </div>
-              <div className="font-sans font-bold text-xs text-white">
-                350+ Reviews <span className="text-[#FF2A85]">(4.9 of 5)</span>
-              </div>
-              <p className="text-[10px] text-zinc-400 font-sans">
-                Reviews from Creative Directors & Producers
+            {/* Testimonial Quote (Top Right, desktop) */}
+            <div className="absolute top-2 sm:top-1 right-2 sm:-right-6 md:-right-16 z-20 text-right max-w-[190px] hidden sm:block pointer-events-none">
+              <span className="text-2xl text-[#FF2A85] font-serif leading-none block">“</span>
+              <p className="text-[11px] font-sans text-zinc-300 leading-snug font-medium drop-shadow-sm">
+                High-Retention Video Editing with Masterful Storytelling!
               </p>
             </div>
 
-            {/* --- FLOATING RIGHT ELEMENTS --- */}
-
-            {/* Testimonial Quote (Top Right) */}
-            <div className="absolute top-10 right-0 sm:-right-8 md:-right-20 z-20 text-right max-w-[200px] hidden sm:block">
-              <span className="text-3xl text-[#FF2A85] font-serif leading-none block">“</span>
-              <p className="text-xs font-sans text-zinc-200 leading-snug font-medium drop-shadow-sm">
-                High-Retention Video Editing with Masterful Storytelling & Rhythm!
-              </p>
+            {/* --- 10 BALANCED FLOATING SERVICE CHIPS AROUND CHARACTER --- */}
+            {/* 1. Left Upper: Color Grading (Dark, -4deg) */}
+            <div className="absolute top-16 sm:top-14 left-2 sm:-left-4 md:-left-12 z-20 pointer-events-none float-chip-1">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-[#141416]/90 backdrop-blur-md text-white border border-[#26262B] font-sans text-[10px] sm:text-xs font-semibold rounded-full shadow-lg shadow-black/50 -rotate-[4deg] select-none">
+                Color Grading
+              </span>
             </div>
 
-            {/* Skill Tag Pills (Middle Right) - Video Editor Tags */}
-            <div className="absolute bottom-20 right-0 sm:-right-10 md:-right-24 z-20 flex flex-col items-end gap-1.5">
-              {/* Row 1 */}
-              <div className="flex items-center gap-1.5">
-                <span className="px-3 py-1 bg-[#141416]/90 backdrop-blur-md text-white border border-[#26262B] font-sans text-[11px] font-semibold rounded-full shadow-sm">
-                  Color Grading
-                </span>
-                <span className="px-3 py-1 bg-[#FF2A85] text-white font-sans text-[11px] font-bold rounded-full shadow-sm shadow-[#FF2A85]/20">
-                  Motion Graphics
-                </span>
-              </div>
+            {/* 2. Right Upper: Motion Graphics (Pink, +4deg) */}
+            <div className="absolute top-16 sm:top-14 right-2 sm:-right-4 md:-right-12 z-20 pointer-events-none float-chip-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-[#FF2A85] text-white font-sans text-[10px] sm:text-xs font-bold rounded-full shadow-lg shadow-[#FF2A85]/25 rotate-[4deg] select-none">
+                Motion Graphics
+              </span>
+            </div>
 
-              {/* Row 2 */}
-              <div className="flex items-center">
-                <span className="px-3 py-1 bg-[#141416]/90 backdrop-blur-md text-white border border-[#26262B] font-sans text-[11px] font-semibold rounded-full shadow-sm flex items-center gap-1.5">
-                  <span className="text-[#FF2A85]">✣</span> 4K Editing
-                </span>
-              </div>
+            {/* 3. Left Upper-Mid: Talking Head Video (Pink, +5deg) */}
+            <div className="absolute top-32 sm:top-30 left-0 sm:-left-8 md:-left-18 z-20 pointer-events-none float-chip-3">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-[#FF2A85] text-white font-sans text-[10px] sm:text-xs font-bold rounded-full shadow-lg shadow-[#FF2A85]/25 rotate-[5deg] select-none">
+                Talking Head Video
+              </span>
+            </div>
 
-              {/* Row 3 */}
-              <div className="flex items-center gap-1.5">
-                <span className="px-3 py-1 bg-[#141416]/90 backdrop-blur-md text-white border border-[#26262B] font-sans text-[11px] font-semibold rounded-full shadow-sm">
-                  Sound Design
-                </span>
-                <span className="px-3 py-1 bg-[#FF2A85] text-white font-sans text-[11px] font-bold rounded-full shadow-sm shadow-[#FF2A85]/20">
-                  Reels & Shorts
-                </span>
-              </div>
+            {/* 4. Right Upper-Mid: Text Motion (Dark, -5deg) */}
+            <div className="absolute top-32 sm:top-30 right-0 sm:-right-8 md:-right-18 z-20 pointer-events-none float-chip-4">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-[#141416]/90 backdrop-blur-md text-white border border-[#26262B] font-sans text-[10px] sm:text-xs font-semibold rounded-full shadow-lg shadow-black/50 -rotate-[5deg] select-none">
+                <span className="text-[#FF2A85]">✣</span> Text Motion
+              </span>
+            </div>
+
+            {/* 5. Left Mid: 4K Editing (Dark, -3deg) */}
+            <div className="absolute top-48 sm:top-46 left-2 sm:-left-6 md:-left-14 z-20 pointer-events-none float-chip-5">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-[#141416]/90 backdrop-blur-md text-white border border-[#26262B] font-sans text-[10px] sm:text-xs font-semibold rounded-full shadow-lg shadow-black/50 -rotate-[3deg] select-none">
+                <span className="text-[#FF2A85]">✣</span> 4K Editing
+              </span>
+            </div>
+
+            {/* 6. Right Mid: B-Roll (Pink, +3deg) */}
+            <div className="absolute top-48 sm:top-46 right-2 sm:-right-6 md:-right-14 z-20 pointer-events-none float-chip-1">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-[#FF2A85] text-white font-sans text-[10px] sm:text-xs font-bold rounded-full shadow-lg shadow-[#FF2A85]/25 rotate-[3deg] select-none">
+                B-Roll
+              </span>
+            </div>
+
+            {/* 7. Left Lower-Mid: Podcast Edits (Dark, +4deg) */}
+            <div className="absolute bottom-24 sm:bottom-22 left-0 sm:-left-8 md:-left-20 z-20 pointer-events-none float-chip-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-[#141416]/90 backdrop-blur-md text-white border border-[#26262B] font-sans text-[10px] sm:text-xs font-semibold rounded-full shadow-lg shadow-black/50 rotate-[4deg] select-none">
+                Podcast Edits
+              </span>
+            </div>
+
+            {/* 8. Right Lower-Mid: Reels & Shorts (Pink, -4deg) */}
+            <div className="absolute bottom-24 sm:bottom-22 right-0 sm:-right-8 md:-right-20 z-20 pointer-events-none float-chip-3">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-[#FF2A85] text-white font-sans text-[10px] sm:text-xs font-bold rounded-full shadow-lg shadow-[#FF2A85]/25 -rotate-[4deg] select-none">
+                Reels & Shorts
+              </span>
+            </div>
+
+            {/* 9. Left Bottom: Sound Design (Dark, -5deg) */}
+            <div className="absolute bottom-8 sm:bottom-8 left-2 sm:-left-4 md:-left-12 z-20 pointer-events-none float-chip-4">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-[#141416]/90 backdrop-blur-md text-white border border-[#26262B] font-sans text-[10px] sm:text-xs font-semibold rounded-full shadow-lg shadow-black/50 -rotate-[5deg] select-none">
+                Sound Design
+              </span>
+            </div>
+
+            {/* 10. Right Bottom: Events (Dark, +5deg) */}
+            <div className="absolute bottom-8 sm:bottom-8 right-2 sm:-right-4 md:-right-12 z-20 pointer-events-none float-chip-5">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-1.5 bg-[#141416]/90 backdrop-blur-md text-white border border-[#26262B] font-sans text-[10px] sm:text-xs font-semibold rounded-full shadow-lg shadow-black/50 rotate-[5deg] select-none">
+                <span className="text-[#FF2A85]">✣</span> Events
+              </span>
             </div>
 
             {/* --- BOTTOM OVERLAPPING CTAs (PORTFOLIO & HIRE ME) --- */}
@@ -447,7 +697,7 @@ export default function App() {
       </section>
 
       {/* 3. MARQUEE TICKER BAR */}
-      <section className="bg-[#0D0D0E] text-white py-4 border-y border-[#FF2A85]/30 overflow-hidden relative select-none mt-12">
+      <section className="bg-[#0D0D0E] text-white py-4 border-y border-[#FF2A85]/30 overflow-hidden relative select-none">
         <div className="animate-marquee flex items-center gap-10 whitespace-nowrap font-sans text-sm font-semibold tracking-wider">
           <span>Commercial Editing</span>
           <span className="text-[#FF2A85] text-base">✣</span>
@@ -583,100 +833,187 @@ export default function App() {
         </div>
       </section>
 
-      {/* 5. SECTION: "A TIP OF THE ICEBERG" (SNAPPING CAROUSEL - NO FILTER TABS) */}
-      <section id="iceberg" className="py-24 px-6 max-w-7xl mx-auto border-t border-[#26262B]">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
-          <div>
-            <div className="flex items-center gap-2 mb-2 font-sans text-xs font-semibold text-zinc-400">
-              <span className="text-[#FF2A85] text-base">✦</span>
-              <span>Selected Portfolio</span>
-            </div>
-            <h2 className="text-3xl sm:text-5xl font-bold tracking-tight text-white">
-              A Tip of the <span className="text-[#FF2A85]">Iceberg</span>
-            </h2>
-          </div>
+      {/* 5. SECTION: "A TIP OF THE ICEBERG" (CENTERED COVERFLOW CAROUSEL) */}
+      <section id="iceberg" className="py-24 px-4 sm:px-6 max-w-7xl mx-auto border-t border-[#26262B] bg-black relative overflow-hidden">
+        {/* Soft elliptical glow centered on the middle card */}
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] md:w-[1300px] h-[45%] rounded-[100%] pointer-events-none -z-0 blur-3xl opacity-80"
+          style={{
+            background: 'radial-gradient(ellipse at center, rgba(255, 42, 133, 0.4) 0%, rgba(255, 42, 133, 0.15) 45%, rgba(255, 42, 133, 0) 75%)'
+          }}
+        />
 
-          {/* Left/Right Navigation Controls */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => scrollCarousel('left')}
-              className="w-10 h-10 rounded-full bg-[#141416] border border-[#26262B] hover:border-[#FF2A85] text-white flex items-center justify-center transition-all shadow-sm active:scale-95 cursor-pointer"
-              aria-label="Previous Project"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => scrollCarousel('right')}
-              className="w-10 h-10 rounded-full bg-[#FF2A85] hover:bg-[#E02070] text-white flex items-center justify-center transition-all shadow-md shadow-[#FF2A85]/25 active:scale-95 cursor-pointer"
-              aria-label="Next Project"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
+        <div className="mb-10 text-center sm:text-left">
+          <div className="flex items-center justify-center sm:justify-start gap-2 mb-2 font-sans text-xs font-semibold text-zinc-400">
+            <span className="text-[#FF2A85] text-base">✦</span>
+            <span>Selected Portfolio</span>
           </div>
+          <h2 className="text-3xl sm:text-5xl font-bold tracking-tight text-white">
+            A Tip of the <span className="text-[#FF2A85]">Iceberg</span>
+          </h2>
         </div>
 
-        {/* Snapping Carousel Track */}
+        {/* Coverflow Stage */}
         <div
-          ref={carouselRef}
-          className="flex items-stretch gap-6 overflow-x-auto pb-6 snap-x snap-mandatory no-scrollbar"
+          className="relative w-full h-[470px] sm:h-[530px] md:h-[580px] overflow-hidden flex items-center justify-center select-none [--neighbor-offset:130px] sm:[--neighbor-offset:190px] md:[--neighbor-offset:270px] lg:[--neighbor-offset:300px] [--outer-offset:230px] sm:[--outer-offset:340px] md:[--outer-offset:480px] lg:[--outer-offset:540px] [--waiting-offset:340px] sm:[--waiting-offset:490px] md:[--waiting-offset:690px] lg:[--waiting-offset:760px]"
+          onMouseEnter={() => setIsCarouselPaused(true)}
+          onMouseLeave={() => setIsCarouselPaused(false)}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
-          {ICEBERG_CAROUSEL.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => setSelectedFilm(item)}
-              className={`snap-start flex-shrink-0 rounded-3xl overflow-hidden bg-[#141416] border border-[#26262B] hover:border-[#FF2A85] transition-all duration-300 shadow-xl cursor-pointer group flex flex-col justify-between ${
-                item.aspect === '9/16'
-                  ? 'w-[250px] sm:w-[280px] aspect-[9/16]'
-                  : 'w-[320px] sm:w-[440px] aspect-video'
-              }`}
-            >
-              {/* Thumbnail Container */}
-              <div className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center">
-                <img
-                  src={item.image}
-                  alt={item.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-80 group-hover:opacity-100"
-                />
+          {ICEBERG_CAROUSEL.map((item, index) => {
+            const diff = getCardOffset(index);
+            const style = getCardStyle(diff);
+            const isActive = diff === 0;
+            const isNeighbor = Math.abs(diff) === 1;
+            const isOuter = Math.abs(diff) === 2;
 
-                {/* Rating Badge Overlay */}
-                <div className="absolute top-4 right-4 bg-black/80 backdrop-blur-md px-3 py-1 rounded-full font-mono text-xs font-bold text-[#FF2A85] border border-white/10 shadow-sm flex items-center gap-1">
-                  <span>{item.rating}</span>
-                </div>
+            return (
+              <div
+                key={item.id}
+                onClick={() => {
+                  if (isActive) {
+                    setSelectedFilm(item);
+                  } else {
+                    setActiveCardIndex(index);
+                  }
+                }}
+                style={style}
+                className={`absolute top-1/2 left-1/2 w-[210px] sm:w-[250px] md:w-[285px] aspect-[9/16] rounded-3xl overflow-hidden bg-[#141416] border transition-all duration-500 ease-out cursor-pointer group shadow-2xl flex flex-col justify-between ${
+                  isActive
+                    ? 'border-[#FF2A85]/70 shadow-[0_12px_45px_rgba(255,42,133,0.3)] ring-1 ring-[#FF2A85]/40'
+                    : 'border-[#26262B] hover:border-[#FF2A85]/50'
+                }`}
+              >
+                {/* Full-Bleed Image */}
+                <div className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center">
+                  <img
+                    src={item.image}
+                    alt={item.title}
+                    className={`w-full h-full object-cover transition-transform duration-700 ${
+                      isActive ? 'group-hover:scale-105 opacity-90 group-hover:opacity-100' : 'opacity-85'
+                    }`}
+                  />
 
-                {/* Category Badge Overlay */}
-                <div className="absolute top-4 left-4 bg-black/80 backdrop-blur-md px-3 py-1 rounded-full font-sans text-[11px] font-medium text-white border border-white/10">
-                  {item.category}
-                </div>
+                  {/* Active Card Top Badges & Scrim */}
+                  {isActive && (
+                    <>
+                      {/* Category Badge Top-Left */}
+                      <div className="absolute top-4 left-4 bg-black/80 backdrop-blur-md px-3 py-1 rounded-full font-sans text-[11px] font-medium text-white border border-white/10 shadow-sm z-10">
+                        {item.category}
+                      </div>
 
-                {/* Play hover prompt */}
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
-                  <div className="w-12 h-12 rounded-full bg-[#FF2A85] text-white flex items-center justify-center shadow-lg shadow-[#FF2A85]/40">
-                    <Play className="w-5 h-5 fill-current ml-0.5" />
-                  </div>
-                </div>
+                      {/* Rating Badge Top-Right */}
+                      <div className="absolute top-4 right-4 bg-black/80 backdrop-blur-md px-3 py-1 rounded-full font-mono text-xs font-bold text-[#FF2A85] border border-white/10 shadow-sm z-10">
+                        {item.rating}
+                      </div>
 
-                {/* Bottom Content Scrim */}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/50 to-transparent flex flex-col justify-end p-5">
-                  <span className="font-mono text-[10px] text-[#FF2A85] uppercase tracking-wider font-semibold">
-                    Release · {item.year}
-                  </span>
-                  <h3 className="text-xl font-bold text-white mt-1 group-hover:text-[#FF2A85] transition-colors">
-                    {item.title}
-                  </h3>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {item.tags.map((tag, idx) => (
-                      <span
-                        key={idx}
-                        className="px-2 py-0.5 rounded-md bg-white/10 text-[10px] font-sans text-zinc-300 border border-white/5"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
+                      {/* Play hover prompt */}
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 z-10">
+                        <div className="w-12 h-12 rounded-full bg-[#FF2A85] text-white flex items-center justify-center shadow-lg shadow-[#FF2A85]/40">
+                          <Play className="w-5 h-5 fill-current ml-0.5" />
+                        </div>
+                      </div>
+
+                      {/* Bottom Content Scrim */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A]/60 to-transparent flex flex-col justify-end p-5 z-10 pointer-events-none">
+                        <span className="font-mono text-[10px] text-[#FF2A85] uppercase tracking-wider font-semibold">
+                          Release · {item.year}
+                        </span>
+                        <h3 className="text-lg sm:text-xl font-bold text-white mt-1 group-hover:text-[#FF2A85] transition-colors line-clamp-1">
+                          {item.title}
+                        </h3>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {item.tags.map((tag: string, idx: number) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded-md bg-white/10 text-[10px] font-sans text-zinc-300 border border-white/5"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Neighbor Cards (Offset ±1) */}
+                  {isNeighbor && (
+                    <>
+                      {/* Rating Top-Right */}
+                      <div className="absolute top-3.5 right-3.5 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-full font-mono text-[11px] font-bold text-[#FF2A85] border border-white/10 shadow-sm z-10">
+                        {item.rating}
+                      </div>
+
+                      {/* Subtle brand pink glow tint */}
+                      <div className="absolute inset-0 bg-[#FF2A85]/15 pointer-events-none" />
+
+                      {/* Small Title at Bottom (No Tags) */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent flex flex-col justify-end p-4 z-10 pointer-events-none">
+                        <h3 className="text-xs sm:text-sm font-bold text-white line-clamp-1">
+                          {item.title}
+                        </h3>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Outer Cards (Offset ±2) */}
+                  {isOuter && (
+                    <>
+                      {/* Rating Top-Right */}
+                      <div className="absolute top-3 right-3 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded-full font-mono text-[10px] font-bold text-[#FF2A85] border border-white/10 shadow-sm z-10">
+                        {item.rating}
+                      </div>
+
+                      {/* Dimming overlay */}
+                      <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+
+                      {/* Small Title at Bottom */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/95 to-transparent flex flex-col justify-end p-3 z-10 pointer-events-none">
+                        <h3 className="text-[11px] font-semibold text-zinc-300 line-clamp-1">
+                          {item.title}
+                        </h3>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
+        </div>
+
+        {/* Centered Navigation Controls Below Carousel */}
+        <div className="flex items-center justify-center gap-4 mt-6">
+          <button
+            onClick={prevSlide}
+            className="w-11 h-11 rounded-full bg-[#141416] border border-[#26262B] hover:border-[#FF2A85] text-white flex items-center justify-center transition-all shadow-sm active:scale-95 cursor-pointer"
+            aria-label="Previous Project"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <button
+            onClick={nextSlide}
+            className="w-11 h-11 rounded-full bg-[#FF2A85] hover:bg-[#E02070] text-white flex items-center justify-center transition-all shadow-md shadow-[#FF2A85]/25 active:scale-95 cursor-pointer"
+            aria-label="Next Project"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* View Full Portfolio Button */}
+        <div className="flex justify-center mt-7">
+          <a
+            href="https://drive.google.com/drive/folders/1NBdXLUmTscD0wOOu5FnWIFYeB91yUCQ-"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-[#FF2A85] hover:bg-[#E02070] text-white font-sans text-xs sm:text-sm font-bold px-6 py-2.5 rounded-full flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-[#FF2A85]/25 active:scale-95 hover:shadow-lg hover:shadow-[#FF2A85]/40"
+          >
+            <span>View Full Portfolio</span>
+            <span className="w-5 h-5 rounded-full bg-[#0A0A0A] text-white flex items-center justify-center text-[10px]">
+              →
+            </span>
+          </a>
         </div>
       </section>
 
@@ -695,33 +1032,34 @@ export default function App() {
 
                 {/* Portrait Cutout inside Arch */}
                 <img
-                  src={PORTRAIT_HERO}
+                  src="https://res.cloudinary.com/djkiddls/image/upload/v1794063398/HL5NBlPXcAAKeuo.jpg"
                   alt="Karen Eddy About"
-                  className="w-[90%] h-[92%] object-cover object-top rounded-t-[120px] rounded-b-2xl contrast-105"
+                  className="w-full h-full object-cover rounded-t-[140px] rounded-b-3xl contrast-105"
+                  style={{ objectPosition: "50% 80%" }}
                 />
 
                 {/* Floating Angled Skill Pills matching reference */}
-                <span className="absolute top-16 -left-4 -rotate-6 px-3 py-1 bg-[#0A0A0A] text-white font-sans text-[11px] font-bold rounded-full shadow-lg border border-white/10">
+                <span className="absolute top-16 -left-4 -rotate-6 px-3 py-1 bg-[#0A0A0A] text-white font-sans text-[11px] font-bold rounded-full shadow-lg border border-white/10 z-10">
                   Commercial Cuts
                 </span>
 
-                <span className="absolute top-12 -right-4 rotate-6 px-3 py-1 bg-[#0A0A0A] text-white font-sans text-[11px] font-bold rounded-full shadow-lg border border-white/10">
+                <span className="absolute top-12 -right-4 rotate-6 px-3 py-1 bg-[#0A0A0A] text-white font-sans text-[11px] font-bold rounded-full shadow-lg border border-white/10 z-10">
                   Color Grading
                 </span>
 
-                <span className="absolute top-36 -right-5 rotate-3 px-3 py-1 bg-[#FF2A85] text-white font-sans text-[11px] font-bold rounded-full shadow-lg shadow-[#FF2A85]/30">
+                <span className="absolute top-36 -right-5 rotate-3 px-3 py-1 bg-[#FF2A85] text-white font-sans text-[11px] font-bold rounded-full shadow-lg shadow-[#FF2A85]/30 z-10">
                   Motion Graphics
                 </span>
 
-                <span className="absolute bottom-20 -left-6 -rotate-12 px-3 py-1 bg-[#0A0A0A] text-white font-sans text-[11px] font-bold rounded-full shadow-lg border border-white/10">
+                <span className="absolute bottom-20 -left-6 -rotate-12 px-3 py-1 bg-[#0A0A0A] text-white font-sans text-[11px] font-bold rounded-full shadow-lg border border-white/10 z-10">
                   4K Editing
                 </span>
 
-                <span className="absolute bottom-16 right-4 rotate-6 px-3 py-1 bg-[#0A0A0A] text-white font-sans text-[11px] font-bold rounded-full shadow-lg border border-white/10">
+                <span className="absolute bottom-12 -right-2 sm:-right-4 rotate-6 px-3 py-1 bg-[#0A0A0A] text-white font-sans text-[11px] font-bold rounded-full shadow-lg border border-white/10 z-10">
                   Sound Design
                 </span>
 
-                <span className="absolute bottom-6 left-6 rotate-2 px-3 py-1 bg-[#FF2A85] text-white font-sans text-[11px] font-bold rounded-full shadow-lg shadow-[#FF2A85]/30">
+                <span className="absolute bottom-4 left-2 sm:left-4 rotate-2 px-3 py-1 bg-[#FF2A85] text-white font-sans text-[11px] font-bold rounded-full shadow-lg shadow-[#FF2A85]/30 z-10">
                   Reels & Shorts
                 </span>
               </div>
@@ -853,11 +1191,62 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4 text-zinc-400">
-            <a href="https://linkedin.com" target="_blank" rel="noreferrer" className="hover:text-[#FF2A85] transition-colors">LinkedIn</a>
+            <a
+              href="https://x.com/TheKarenEddy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#FF2A85] transition-colors flex items-center gap-1.5"
+              title="X (@TheKarenEddy)"
+            >
+              <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+              </svg>
+              <span>X</span>
+            </a>
             <span>·</span>
-            <a href="https://twitter.com" target="_blank" rel="noreferrer" className="hover:text-[#FF2A85] transition-colors">Twitter</a>
+            <a
+              href="https://www.youtube.com/@kareneddy2"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#FF2A85] transition-colors flex items-center gap-1.5"
+              title="YouTube (@kareneddy2)"
+            >
+              <Youtube className="w-3.5 h-3.5" />
+              <span>YouTube</span>
+            </a>
             <span>·</span>
-            <a href="https://youtube.com" target="_blank" rel="noreferrer" className="hover:text-[#FF2A85] transition-colors">YouTube</a>
+            <a
+              href="https://linkedin.com/in/karen-eddy-940258286"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#FF2A85] transition-colors flex items-center gap-1.5"
+              title="LinkedIn"
+            >
+              <Linkedin className="w-3.5 h-3.5" />
+              <span>LinkedIn</span>
+            </a>
+            <span>·</span>
+            <a
+              href="https://t.me/Kareneddy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#FF2A85] transition-colors flex items-center gap-1.5"
+              title="Telegram (@Kareneddy)"
+            >
+              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.458c.538-.196 1.006.128.832.939z"/>
+              </svg>
+              <span>Telegram</span>
+            </a>
+            <span>·</span>
+            <a
+              href="mailto:winneredet2@gmail.com"
+              className="hover:text-[#FF2A85] transition-colors flex items-center gap-1.5"
+              title="Email winneredet2@gmail.com"
+            >
+              <Mail className="w-3.5 h-3.5" />
+              <span>Email</span>
+            </a>
           </div>
         </div>
 
@@ -867,112 +1256,100 @@ export default function App() {
         </div>
       </footer>
 
-      {/* 9. INTERACTIVE "LET'S TALK" / "HIRE ME" MODAL */}
+      {/* 9. JOTFORM CONTACT POPUP MODAL (FULL-SCREEN WITH BLUR, ESC & OVERLAY DISMISS) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#141416] border border-[#FF2A85]/40 w-full max-w-lg rounded-[32px] p-6 sm:p-8 relative shadow-2xl animate-in fade-in zoom-in-95 duration-150 text-white">
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-6 right-6 text-zinc-400 hover:text-white font-mono text-sm cursor-pointer p-1"
-            >
-              ✕ ESC
-            </button>
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsModalOpen(false);
+          }}
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-3 sm:p-6 overflow-y-auto"
+        >
+          {/* Close button X top right */}
+          <button
+            onClick={() => setIsModalOpen(false)}
+            aria-label="Close modal"
+            className="fixed top-4 right-4 sm:top-6 sm:right-6 z-50 w-11 h-11 rounded-full bg-[#141416]/90 border border-white/20 text-zinc-300 hover:text-white hover:border-[#FF2A85] flex items-center justify-center font-mono text-lg transition-all cursor-pointer shadow-xl hover:scale-105"
+          >
+            ✕
+          </button>
 
-            <span className="font-mono text-xs text-[#FF2A85] font-bold tracking-widest uppercase block mb-1">
-              INQUIRY // PROJECT BRIEF
-            </span>
-            <h3 className="text-2xl sm:text-3xl font-bold text-white mb-2 font-sans">
-              Let's Talk About Your Project
-            </h3>
-            <p className="text-zinc-400 text-xs sm:text-sm font-light mb-6">
-              Have a commercial, YouTube series, documentary, or viral social campaign in mind? Karen responds within 24 hours.
-            </p>
-
-            {modalSubmitted ? (
-              <div className="text-center py-8 space-y-4">
-                <div className="w-16 h-16 rounded-full bg-[#FF2A85]/20 border border-[#FF2A85] text-[#FF2A85] flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-8 h-8" />
-                </div>
-                <h4 className="text-lg font-bold text-white font-mono">PROJECT INQUIRY RECEIVED</h4>
-                <p className="text-xs text-zinc-400 font-sans max-w-sm mx-auto">
-                  Thank you! Your project brief has been dispatched. Karen will review your footage specs and reach out promptly.
-                </p>
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="mt-4 px-7 py-3 bg-[#FF2A85] text-white font-mono text-xs font-bold rounded-full cursor-pointer shadow-md shadow-[#FF2A85]/30 hover:bg-[#E02070]"
+          {/* Modal Content Container */}
+          <div className="w-full max-w-4xl flex flex-col items-center my-auto relative animate-in fade-in zoom-in-95 duration-150">
+            {/* Line above iframe */}
+            <div className="w-full text-center mb-3 sm:mb-4 px-2">
+              <p className="text-xs sm:text-sm text-zinc-300 font-sans">
+                Prefer chat? Message me on Telegram{' '}
+                <a
+                  href="https://t.me/Kareneddy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#FF2A85] hover:underline font-semibold"
                 >
-                  Return to Portfolio [ESC]
-                </button>
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setModalSubmitted(true);
-                }}
-                className="space-y-4 font-mono text-xs"
-              >
-                <div>
-                  <label className="block text-zinc-400 mb-1 text-[11px]">YOUR NAME / PRODUCTION COMPANY</label>
+                  @Kareneddy
+                </a>
+              </p>
+            </div>
+
+            {/* Jotform Embed Iframe */}
+            <iframe
+              src="https://form.jotform.com/260071745992564"
+              title="Contact Karen Eddy"
+              loading="lazy"
+              scrolling="yes"
+              className="w-full h-[88vh] sm:h-[90vh] rounded-3xl border border-white/10 bg-[#141416] shadow-2xl"
+            />
+
+            {/* Preserved existing contact form code (hidden for future wiring) */}
+            <div className="hidden" aria-hidden="true">
+              <span className="font-mono text-xs text-[#FF2A85] font-bold tracking-widest uppercase block mb-1">
+                INQUIRY // PROJECT BRIEF
+              </span>
+              <h3 className="text-2xl sm:text-3xl font-bold text-white mb-2 font-sans">
+                Let's Talk About Your Project
+              </h3>
+              <p className="text-zinc-400 text-xs sm:text-sm font-light mb-6">
+                Have a commercial, YouTube series, documentary, or viral social campaign in mind? Karen responds within 24 hours.
+              </p>
+              {modalSubmitted ? (
+                <div className="text-center py-8 space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-[#FF2A85]/20 border border-[#FF2A85] text-[#FF2A85] flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+                  <h4 className="text-lg font-bold text-white font-mono">PROJECT INQUIRY RECEIVED</h4>
+                  <p className="text-xs text-zinc-400 font-sans max-w-sm mx-auto">
+                    Thank you! Your project brief has been dispatched. Karen will review your footage specs and reach out promptly.
+                  </p>
+                </div>
+              ) : (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setModalSubmitted(true);
+                  }}
+                  className="space-y-4 font-mono text-xs"
+                >
                   <input
                     type="text"
-                    required
                     placeholder="e.g. Alex Morgan, Executive Producer"
-                    className="w-full bg-[#1A1A1E] border border-white/10 rounded-xl p-3 text-white focus:border-[#FF2A85] outline-none font-sans text-xs"
+                    className="w-full bg-[#1A1A1E] border border-white/10 rounded-xl p-3 text-white"
                   />
-                </div>
-
-                <div>
-                  <label className="block text-zinc-400 mb-1 text-[11px]">EMAIL ADDRESS</label>
                   <input
                     type="email"
-                    required
                     placeholder="alex@production.io"
-                    className="w-full bg-[#1A1A1E] border border-white/10 rounded-xl p-3 text-white focus:border-[#FF2A85] outline-none font-sans text-xs"
+                    className="w-full bg-[#1A1A1E] border border-white/10 rounded-xl p-3 text-white"
                   />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-zinc-400 mb-1 text-[11px]">SERVICE FOCUS</label>
-                    <select className="w-full bg-[#1A1A1E] border border-white/10 rounded-xl p-3 text-white focus:border-[#FF2A85] outline-none font-sans text-xs">
-                      <option>Commercial & Promo Editing</option>
-                      <option>YouTube & Long-Form Content</option>
-                      <option>Social Media Reels & TikToks</option>
-                      <option>Color Grading & Correction</option>
-                      <option>Motion Graphics & VFX</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-zinc-400 mb-1 text-[11px]">BUDGET TIER</label>
-                    <select className="w-full bg-[#1A1A1E] border border-white/10 rounded-xl p-3 text-white focus:border-[#FF2A85] outline-none font-sans text-xs">
-                      <option>$1,500 - $3,000</option>
-                      <option>$3,000 - $5,000</option>
-                      <option>$5,000 - $10,000</option>
-                      <option>$10,000+</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-zinc-400 mb-1 text-[11px]">PROJECT OVERVIEW & TIMELINE</label>
                   <textarea
                     rows={3}
-                    placeholder="Tell Karen about your footage format, timeline, sound requirements, and vision..."
-                    className="w-full bg-[#1A1A1E] border border-white/10 rounded-xl p-3 text-white focus:border-[#FF2A85] outline-none font-sans text-xs"
+                    placeholder="Tell Karen about your footage format, timeline, sound requirements..."
+                    className="w-full bg-[#1A1A1E] border border-white/10 rounded-xl p-3 text-white"
                   />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full bg-[#FF2A85] hover:bg-[#E02070] text-white font-bold py-3.5 rounded-full transition-all mt-2 cursor-pointer shadow-lg shadow-[#FF2A85]/25 flex items-center justify-center gap-2"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>DISPATCH INQUIRY</span>
-                </button>
-              </form>
-            )}
+                  <button type="submit" className="w-full bg-[#FF2A85] text-white">
+                    <Send className="w-3.5 h-3.5" />
+                    <span>DISPATCH INQUIRY</span>
+                  </button>
+                </form>
+              )}
+            </div>
           </div>
         </div>
       )}

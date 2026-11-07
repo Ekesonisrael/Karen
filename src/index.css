@@ -36,6 +36,22 @@
   animation: spin 16s linear infinite;
 }
 
+/* Gentle Floating Animation for Hero Service Chips */
+@keyframes float-gentle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.float-chip-1 { animation: float-gentle 3.8s ease-in-out infinite; }
+.float-chip-2 { animation: float-gentle 4.6s ease-in-out infinite 0.7s; }
+.float-chip-3 { animation: float-gentle 5.2s ease-in-out infinite 1.4s; }
+.float-chip-4 { animation: float-gentle 4.2s ease-in-out infinite 2.1s; }
+.float-chip-5 { animation: float-gentle 4.8s ease-in-out infinite 2.8s; }
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #0A0A0A; }

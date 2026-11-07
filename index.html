@@ -15,25 +15,22 @@
   </head>
   <body class="bg-[#0A0A0A] text-[#FFFFFF] selection:bg-[#FF2A85] selection:text-[#FFFFFF] antialiased">
     <div id="root">
-      <!-- Full-Width Background Video Hero Section -->
-      <section id="hero" class="relative w-full overflow-hidden pt-32 sm:pt-40 pb-20 md:pb-28">
+      <!-- 2. HERO SECTION -->
+      <section id="hero" class="relative w-full overflow-hidden bg-black flex flex-col justify-center pt-20 sm:pt-28 pb-10 sm:pb-14 min-h-screen">
         
-        <!-- Full-Width Hero Background Video Layer -->
-        <div class="absolute inset-0 w-full h-full overflow-hidden pointer-events-none -z-10">
-          <video
-            autoplay
-            muted
-            loop
-            playsinline
-            class="w-full h-full object-cover object-center scale-105"
-            src="/assets/aistudio/Create_smooth_seamless_transition_1f8d059e_f9661600.mp4"
-          ></video>
-          <!-- Subtle dark gradient overlay & vignette for optimal contrast -->
-          <div class="absolute inset-0 bg-black/60 bg-gradient-to-b from-[#0A0A0A]/90 via-black/45 to-[#0A0A0A]"></div>
-          <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_25%,_rgba(10,10,10,0.8)_100%)]"></div>
-        </div>
+        <!-- Full-Width Background Video (Scroll-Controlled) -->
+        <video
+          muted
+          playsinline
+          preload="auto"
+          class="absolute inset-0 w-full h-full object-contain md:object-cover object-center z-0 pointer-events-none"
+          src="https://res.cloudinary.com/djkiddls/video/upload/f_mp4,vc_h264,q_auto/Create_smooth_seamless_transition_1f8d059e.mp4"
+        ></video>
 
-        <div class="relative max-w-7xl mx-auto px-6 z-10">
+        <!-- 40% Black Overlay between video and text -->
+        <div class="absolute inset-0 bg-black/40 z-[1] pointer-events-none"></div>
+
+        <div class="relative max-w-7xl mx-auto px-6 z-10 w-full">
           <!-- Top Award Badge -->
           <div class="flex justify-center mb-6">
             <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#141416]/90 backdrop-blur-md border border-[#26262B] font-sans text-xs text-zinc-300 shadow-sm">
@@ -55,8 +52,6 @@
 
           <!-- Central Stage Area with Centered Character Focus -->
           <div class="relative max-w-3xl mx-auto min-h-[380px] sm:min-h-[460px] md:min-h-[500px] flex justify-center items-center pt-4">
-            <div class="absolute w-[320px] sm:w-[440px] h-[320px] sm:h-[440px] rounded-full bg-[#FF2A85]/5 blur-3xl -z-10 pointer-events-none"></div>
-
             <!-- Bottom Overlapping CTAs -->
             <div class="absolute -bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-[#141416]/95 backdrop-blur-md p-1 rounded-full shadow-xl border border-[#26262B]">
               <a href="#iceberg" class="bg-[#FF2A85] text-white font-sans text-xs sm:text-sm font-bold px-6 py-2.5 rounded-full flex items-center gap-2 shadow-md shadow-[#FF2A85]/25">
