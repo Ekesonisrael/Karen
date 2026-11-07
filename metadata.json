@@ -1,0 +1,6 @@
+{
+  "name": "Karen Eddy - Freelance Video Editor",
+  "description": "Portfolio prototype for freelance video editor Karen Eddy featuring an authentic NLE source monitor workspace with hot-pink playhead, scroll-scrubbing, and technical chrome.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
